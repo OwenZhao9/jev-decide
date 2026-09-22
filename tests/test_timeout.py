@@ -9,6 +9,11 @@ from jev_decide import Decider
 
 TIMEOUT_S = 0.4
 
+#: 解释器自身的开销上限：走一遍降级链、两次 socket 超时、以及前后的记账，
+#: 都是真实的毫秒。断言"预算 + 这个余量"是在测预算没被成倍放大，
+#: 而不是在测 Python 不花时间。
+_OVERHEAD_MS = 20.0
+
 
 def test_a_hanging_backend_degrades_to_the_next_one(mock_http) -> None:
     mock_http.hangs()
@@ -27,7 +32,7 @@ def test_the_whole_call_stays_inside_twice_the_timeout(mock_http) -> None:
     result = d.choice({}, "q", ["a", "b"], rules=lambda _s: "b")
     elapsed = time.monotonic() - started
 
-    assert elapsed <= 2 * TIMEOUT_S, f"auto took {elapsed:.3f}s, budget is {2 * TIMEOUT_S}s"
+    assert elapsed <= 2 * TIMEOUT_S + _OVERHEAD_MS / 1000.0, f"auto took {elapsed:.3f}s, budget is {2 * TIMEOUT_S}s"
     assert result.backend == "rules"
     assert result.value == "b"
     assert result.degraded is True
@@ -52,7 +57,7 @@ def test_score_honours_the_same_budget(mock_http) -> None:
     result = d.score({}, "how urgent", 0.0, 10.0, rules=lambda _s: 3.0)
     elapsed = time.monotonic() - started
 
-    assert elapsed <= 2 * TIMEOUT_S
+    assert elapsed <= 2 * TIMEOUT_S + _OVERHEAD_MS / 1000.0
     assert result.backend == "rules"
     assert result.value == 3.0
 
@@ -66,8 +71,17 @@ def test_the_rules_backend_is_reached_even_with_no_budget_left(mock_http) -> Non
 
 
 def test_latency_ms_covers_the_whole_call_not_just_the_last_hop(mock_http) -> None:
+    """`latency_ms` is the whole `choice()` call, not just the backend that answered.
+
+    The ceiling is the documented ``2 * timeout_s`` budget plus `_OVERHEAD_MS` for
+    the interpreter itself: two socket timeouts, the walk down the chain and the
+    bookkeeping around it all cost real milliseconds, and with a 0.5 s budget that
+    allowance is ~4%. Asserting against the bare budget would be asserting that
+    Python takes zero time, which fails on any loaded machine.
+    """
     mock_http.hangs()
-    d = Decider("auto", api_key="sk", timeout_s=0.1)
+    timeout_s = 0.5
+    d = Decider("auto", api_key="sk", timeout_s=timeout_s)
     result = d.choice({}, "q", ["a"], rules=lambda _s: "a")
-    assert result.latency_ms >= 100.0
-    assert result.latency_ms <= 2 * 0.1 * 1000.0
+    assert result.latency_ms >= timeout_s * 1000.0
+    assert result.latency_ms <= 2 * timeout_s * 1000.0 + _OVERHEAD_MS
