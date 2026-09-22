@@ -117,8 +117,12 @@ def test_weights_become_probs_and_the_argmax_wins() -> None:
 def test_a_close_call_reports_low_confidence_and_the_gate_holds() -> None:
     """The whole point: offline, a one-hot answer would gate through every time."""
     d = Decider(backend="rules")
-    clear = d.choice({}, "which?", OPTIONS, rules=lambda s: {"assist": 9.0, "resist": 1.0, "zero": 0.2})
-    close = d.choice({}, "which?", OPTIONS, rules=lambda s: {"assist": 5.0, "resist": 4.5, "zero": 0.1})
+    clear = d.choice(
+        {}, "which?", OPTIONS, rules=lambda s: {"assist": 9.0, "resist": 1.0, "zero": 0.2}
+    )
+    close = d.choice(
+        {}, "which?", OPTIONS, rules=lambda s: {"assist": 5.0, "resist": 4.5, "zero": 0.1}
+    )
     assert clear.confidence > close.confidence
     assert Decider.gate(clear, min_confidence=0.5, on_low="keep", current="zero") == "assist"
     assert Decider.gate(close, min_confidence=0.5, on_low="keep", current="zero") == "zero"

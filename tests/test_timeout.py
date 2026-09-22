@@ -9,9 +9,10 @@ from jev_decide import Decider
 
 TIMEOUT_S = 0.4
 
-#: 解释器自身的开销上限：走一遍降级链、两次 socket 超时、以及前后的记账，
-#: 都是真实的毫秒。断言"预算 + 这个余量"是在测预算没被成倍放大，
-#: 而不是在测 Python 不花时间。
+#: Headroom for the interpreter itself: walking the fallback chain, two socket
+#: timeouts and the bookkeeping around them all cost real milliseconds. Asserting
+#: "budget + this" tests that the fallbacks do not multiply the budget; asserting
+#: the bare budget would test that Python takes no time at all.
 _OVERHEAD_MS = 20.0
 
 
@@ -32,7 +33,9 @@ def test_the_whole_call_stays_inside_twice_the_timeout(mock_http) -> None:
     result = d.choice({}, "q", ["a", "b"], rules=lambda _s: "b")
     elapsed = time.monotonic() - started
 
-    assert elapsed <= 2 * TIMEOUT_S + _OVERHEAD_MS / 1000.0, f"auto took {elapsed:.3f}s, budget is {2 * TIMEOUT_S}s"
+    assert elapsed <= 2 * TIMEOUT_S + _OVERHEAD_MS / 1000.0, (
+        f"auto took {elapsed:.3f}s, budget is {2 * TIMEOUT_S}s"
+    )
     assert result.backend == "rules"
     assert result.value == "b"
     assert result.degraded is True
@@ -71,13 +74,10 @@ def test_the_rules_backend_is_reached_even_with_no_budget_left(mock_http) -> Non
 
 
 def test_latency_ms_covers_the_whole_call_not_just_the_last_hop(mock_http) -> None:
-    """`latency_ms` is the whole `choice()` call, not just the backend that answered.
+    """``latency_ms`` covers the whole ``choice()`` call, not just the last hop.
 
-    The ceiling is the documented ``2 * timeout_s`` budget plus `_OVERHEAD_MS` for
-    the interpreter itself: two socket timeouts, the walk down the chain and the
-    bookkeeping around it all cost real milliseconds, and with a 0.5 s budget that
-    allowance is ~4%. Asserting against the bare budget would be asserting that
-    Python takes zero time, which fails on any loaded machine.
+    The ceiling is the documented ``2 * timeout_s`` budget plus ``_OVERHEAD_MS``;
+    with a 0.5 s budget that allowance is about 4%.
     """
     mock_http.hangs()
     timeout_s = 0.5
