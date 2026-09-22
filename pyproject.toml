@@ -1,0 +1,56 @@
+[project]
+name = "jev-decide"
+version = "0.1.0"
+description = "Typed decisions with calibrated confidence: ask one typed question, get choice + probabilities + confidence, and gate on it."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "OwenZhao9" }]
+requires-python = ">=3.11"
+keywords = ["decision", "selective-prediction", "confidence", "llm", "typesafe", "jev", "agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+# Zero runtime dependencies on purpose: HTTP goes through the standard library's urllib.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/OwenZhao9/jev-decide"
+Repository = "https://github.com/OwenZhao9/jev-decide"
+Issues = "https://github.com/OwenZhao9/jev-decide/issues"
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "jev_decide"
+module-root = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "T20"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/*" = ["T20"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["jev_decide"]
