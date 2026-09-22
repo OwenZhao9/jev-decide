@@ -147,7 +147,7 @@ class Decider:
         question: str,
         options: Sequence[str],
         *,
-        rules: Callable[[Mapping[str, Any]], str] | None = None,
+        rules: Callable[[Mapping[str, Any]], str | Mapping[str, float]] | None = None,
     ) -> Choice:
         """Pick one of ``options`` given ``state``.
 
@@ -163,7 +163,11 @@ class Decider:
             The allowed answers.  The returned ``value`` is always one of these, and
             ``probs`` is keyed by them in this order.
         rules:
-            A pure function ``state -> option`` used by the ``rules`` backend.
+            A pure function used by the ``rules`` backend.  Return the chosen
+            option as a ``str``, or a ``{option: weight}`` mapping to express
+            how close the call was -- the weights are normalised into ``probs``
+            and the reported confidence follows their shape, so :meth:`gate`
+            still means something when ``rules`` is the only backend available.
             Supplying one is what makes an offline fallback meaningful.
 
         Returns

@@ -162,7 +162,9 @@ class Decider:
 
 在 `options` 里挑一个。`state` 必须是 **JSON 可序列化**的 mapping；
 不是的话抛 `ValueError`，**绝不会被悄悄 `str()` 掉**（见第 6 节）。
-`rules` 是给 `rules` 后端用的纯函数 `state -> option`。
+`rules` 是给 `rules` 后端用的纯函数。返回选中的那个选项（`str`），或者返回一个
+`{选项: 权重}` 字典来表达"这次有多接近"——权重会被归一化成 `probs`，置信度按分布的形状算，
+所以离线时 `gate()` 依然有意义（详见下面的 `rules` 后端小节）。
 
 ```python
     def score(self, state: Mapping[str, Any], rubric: str,
@@ -221,6 +223,18 @@ class ConfigError(JevDecideError, ValueError): ...   # 参数错误，同时是 
 没传 `rules=` 函数时它不会瞎编：返回第一个选项 + 均匀分布 + `confidence=0.0` +
 `degraded=True`，于是 `gate()` 默认就会拒绝行动。这是有意的——
 **没有依据的答案，置信度就应该是 0。**
+
+函数可以有两种返回值：
+
+```python
+lambda state: "resist"                                   # 就选它 -> confidence 1.0
+lambda state: {"assist": 5.0, "resist": 4.5, "zero": 0.1}  # 这次很接近 -> confidence 0.32
+```
+
+字典形式是**离线时置信度门控还能用**的关键：一个只会给 one-hot 答案的本地函数，
+置信度永远是 1.0，`gate()` 就成了摆设。权重用同一套归一化和负熵公式换算成
+`probs` 与 `confidence`，和远端后端在同一个刻度上。未知的键会被丢掉，
+负数和非有限值按 0 算；所有权重都是 0 时不算答案，照样 `degraded=True`、`confidence=0.0`。
 
 ### `jev`：TypeSafe System One（已实现）
 
@@ -330,7 +344,7 @@ CI 在 Python 3.11 / 3.12 / 3.13 上跑 pytest + ruff。
 |---|---:|---|
 | `test_types.py` | 29 | `Choice`/`Score` 的 JSON 往返、frozen、构造期校验、`probs` 防外部篡改 |
 | `test_state_validation.py` | 16 | 非 JSON `state` 抛 `ValueError`、错误路径定位、**确认没有被 `str()` 掉** |
-| `test_rules_backend.py` | 10 | 纯函数成功路径、抛异常/返回非法值降级、夹断、无函数时 confidence=0、确定性 |
+| `test_rules_backend.py` | 17 | 纯函数成功路径、抛异常/返回非法值降级、夹断、无函数时 confidence=0、确定性、字典权重归一化与 argmax、接近的判断置信度低且 gate 拦住、均匀权重 confidence=0、未知键丢弃与负值归零、全零权重不算答案、平手按 options 顺序 |
 | `test_jev_backend.py` | 29 | 按官方文档校验请求体与端点、概率归一化、Score 档位线性映射、401/422/429/529/500 降级、畸形响应降级 |
 | `test_llm_backend.py` | 14 | JSON schema 请求体、enum 限定、散文回答→修复重试一次、分布加权打分、网关/自建端点 |
 | `test_auto_fallback.py` | 35 | **无 key 时 `auto` 跑通且 `degraded=True`**、逐级降级、链条顺序、构造期与参数校验 |

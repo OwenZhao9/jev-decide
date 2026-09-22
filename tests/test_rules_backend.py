@@ -97,3 +97,71 @@ def test_same_input_gives_the_same_answer() -> None:
     first = d.choice(state, "q", ["a", "b"], rules=picker)
     second = d.choice(state, "q", ["a", "b"], rules=picker)
     assert first.to_dict() | {"latency_ms": 0} == second.to_dict() | {"latency_ms": 0}
+
+
+# ------------------------------------------------- rules may return weights, not just a pick
+
+OPTIONS = ("zero", "resist", "assist")
+
+
+def test_weights_become_probs_and_the_argmax_wins() -> None:
+    d = Decider(backend="rules")
+    c = d.choice({}, "which?", OPTIONS, rules=lambda s: {"assist": 9.0, "resist": 1.0, "zero": 0.0})
+    assert c.value == "assist"
+    assert c.probs["assist"] == pytest.approx(0.9)
+    assert c.probs["resist"] == pytest.approx(0.1)
+    assert c.probs["zero"] == 0.0
+    assert sum(c.probs.values()) == pytest.approx(1.0)
+
+
+def test_a_close_call_reports_low_confidence_and_the_gate_holds() -> None:
+    """The whole point: offline, a one-hot answer would gate through every time."""
+    d = Decider(backend="rules")
+    clear = d.choice({}, "which?", OPTIONS, rules=lambda s: {"assist": 9.0, "resist": 1.0, "zero": 0.2})
+    close = d.choice({}, "which?", OPTIONS, rules=lambda s: {"assist": 5.0, "resist": 4.5, "zero": 0.1})
+    assert clear.confidence > close.confidence
+    assert Decider.gate(clear, min_confidence=0.5, on_low="keep", current="zero") == "assist"
+    assert Decider.gate(close, min_confidence=0.5, on_low="keep", current="zero") == "zero"
+
+
+def test_flat_weights_mean_no_idea() -> None:
+    d = Decider(backend="rules")
+    c = d.choice({}, "which?", OPTIONS, rules=lambda s: {o: 1.0 for o in OPTIONS})
+    assert c.confidence == pytest.approx(0.0)
+
+
+def test_returning_a_plain_string_still_gives_one_hot() -> None:
+    """Backwards compatible: the str form keeps its old meaning."""
+    d = Decider(backend="rules")
+    c = d.choice({}, "which?", OPTIONS, rules=lambda s: "resist")
+    assert c.value == "resist"
+    assert c.confidence == pytest.approx(1.0)
+    assert c.probs == {"zero": 0.0, "resist": 1.0, "assist": 0.0}
+
+
+def test_unknown_keys_are_dropped_and_negatives_are_zeroed() -> None:
+    d = Decider(backend="rules")
+    c = d.choice({}, "which?", OPTIONS,
+                 rules=lambda s: {"assist": 3.0, "resist": -5.0, "nonsense": 100.0})
+    assert c.value == "assist"
+    assert c.probs == {"zero": 0.0, "resist": 0.0, "assist": 1.0}
+
+
+def test_weights_with_no_positive_mass_are_not_an_answer() -> None:
+    """All-zero weights mean the rules function had nothing to say.
+
+    ``rules`` is the terminal backend, so there is nowhere left to fall through to:
+    the result comes back degraded with confidence 0.0 rather than inventing
+    certainty, and ``gate`` refuses to act on it.
+    """
+    d = Decider(backend="rules")
+    c = d.choice({}, "which?", OPTIONS, rules=lambda s: {"assist": 0.0, "resist": 0.0})
+    assert c.degraded is True
+    assert c.confidence == pytest.approx(0.0)
+    assert Decider.gate(c, min_confidence=0.1, on_low="keep", current="zero") == "zero"
+
+
+def test_ties_resolve_to_the_first_option_given() -> None:
+    d = Decider(backend="rules")
+    c = d.choice({}, "which?", OPTIONS, rules=lambda s: {"resist": 2.0, "assist": 2.0})
+    assert c.value == "resist"          # options order decides, deterministically

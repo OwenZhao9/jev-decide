@@ -36,7 +36,7 @@ class ChoiceRequest:
     state: Any
     question: str
     options: tuple[str, ...]
-    rules: Callable[[Mapping[str, Any]], str] | None = None
+    rules: Callable[[Mapping[str, Any]], str | Mapping[str, float]] | None = None
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 [project]
 name = "jev-decide"
-version = "0.1.0"
+version = "0.1.1"
 description = "Typed decisions with calibrated confidence: ask one typed question, get choice + probabilities + confidence, and gate on it."
 readme = "README.md"
 license = { text = "MIT" }

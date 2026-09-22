@@ -3,6 +3,11 @@
 Zero dependencies, no IO, no network, microseconds.  This is the backend that is
 *always* available, which is what makes ``auto`` safe to call with no API key at all.
 
+The rules function may return either the chosen option (``str``) or a
+``{option: weight}`` mapping.  The mapping form is what keeps :meth:`Decider.gate`
+useful offline: a one-hot answer always reports confidence 1.0, so a local rules
+function that cannot express "this was close" would gate through every time.
+
 It is also the honest floor of the library: when there is no rules function to call,
 it does not invent an answer -- it returns the first option with a flat distribution,
 ``confidence=0.0`` and ``degraded=True``, so that :meth:`Decider.gate` blocks by
@@ -13,8 +18,9 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Mapping
 
-from .._math import clamp, confidence_from_probs, uniform_probs
+from .._math import clamp, confidence_from_probs, normalise_probs, uniform_probs
 from .base import BackendUnavailable, ChoiceRequest, ChoiceResult, ScoreRequest, ScoreResult
 
 __all__ = ["RulesBackend"]
@@ -54,6 +60,25 @@ class RulesBackend:
             raise BackendUnavailable(
                 f"rules function raised {type(exc).__name__}: {exc}"
             ) from exc
+
+        if isinstance(picked, Mapping):
+            # The rules function said how close the call was.  Normalise its weights
+            # and let the shape of the distribution set the confidence, exactly as the
+            # remote backends do -- otherwise gate() is dead weight whenever `rules`
+            # is the only backend available, which is the no-API-key default.
+            probs, usable = normalise_probs(picked, options)
+            if not usable:
+                raise BackendUnavailable(
+                    f"rules function returned {dict(picked)!r}, which carries no positive "
+                    f"weight for any of {list(options)}"
+                )
+            value = max(probs, key=lambda option: probs[option])
+            return ChoiceResult(
+                value=value,
+                probs=probs,
+                confidence=confidence_from_probs(probs),
+                raw=None,
+            )
 
         if not isinstance(picked, str) or picked not in options:
             raise BackendUnavailable(

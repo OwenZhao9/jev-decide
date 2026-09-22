@@ -36,7 +36,7 @@ from .types import Choice, Score
 
 __all__ = ["Choice", "ConfigError", "Decider", "JevDecideError", "Score"]
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # A library configures no handlers; the application does.
 logging.getLogger(__name__).addHandler(logging.NullHandler())
